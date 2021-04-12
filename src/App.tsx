@@ -1,56 +1,69 @@
-import React, { useState } from 'react'
-import { fetchQuizQuestions } from './API'
+import React from 'react'
+import { fetchQuizQuestions, Difficulty } from './API'
+import { connect, ConnectedProps } from 'react-redux'
 
 //Containers
 import QuestionCard from './Containers/QuestionCard'
 
 //Types
-import { QuestionsState, Difficulty } from './API'
+import { QuestionsAPI } from './Types/QuestionsAPIType'
+import { Answer } from './Types/AnswerType'
+import { Quiz } from './Types/QuizType'
 
 //Styles
 import { GlobalStyle, Wrapper } from './App.styles'
 
-export type AnswerObject = {
-  question: string;
-  answer: string;
-  correct: boolean;
-  correct_answer: string;
-}
+//Actions
+import QuizActions from './Stores/Quiz/Actions'
 
 const TOTAL_QUESTIONS = 10
 
-const App: React.FC = () => {
-  const [loading, setLoading] = useState(false)
-  const [questions, setQuestions] = useState<QuestionsState[]>([])
-  const [number, setNumber] = useState(0)
-  const [userAnswers, setUserAnswers] = useState<AnswerObject[]>([])
-  const [score, setScore] = useState(0)
-  const [gameOver, setGameOver] = useState(true)
+const mapState = (state: Quiz) => ({
+  loading: state.loading,
+  gameOver: state.gameOver,
+  score: state.score,
+  questions: state.questions,
+  number: state.number,
+  userAnswers: state.userAnswers
+})
 
-  const startTrivia = async () => {
-    setLoading(true)
-    setGameOver(false)
+const mapDispatch = {
+  startQuiz: () => (QuizActions.startQuiz()),
+  setQuestions: (newQuestions: QuestionsAPI[]) => (QuizActions.setQuestions(newQuestions)),
+  checkAnswer: (correct: boolean, answerObject: Answer) => (QuizActions.checkAnswer(correct, answerObject)),
+  nextQuestion: (nextQuestionNumber: number) => (QuizActions.nextQuestion(nextQuestionNumber)),
+  setGameOver: (flag: boolean) => (QuizActions.setGameOver(flag))
+}
+
+const connector = connect(mapState, mapDispatch)
+
+type PropsFromRedux = ConnectedProps<typeof connector>
+
+type Props = PropsFromRedux
+
+class App extends React.Component<Props> {
+
+  onStartQuiz = async () => {
+    const { startQuiz, setQuestions } = this.props
+
+    startQuiz()
 
     //Do error handling
     const newQuestions = await fetchQuizQuestions(
       TOTAL_QUESTIONS,
       Difficulty.EASY
     )
-
+    
     setQuestions(newQuestions)
-    setScore(0)
-    setUserAnswers([])
-    setNumber(0)
-    setLoading(false)
   }
 
-  const checkAnswer = (e: React.MouseEvent<HTMLButtonElement>) => {
+  onCheckAnswer = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const { gameOver, questions, number, checkAnswer } = this.props 
+
     if(!gameOver) {
       const answer = e.currentTarget.value
 
       const correct = questions[number].correct_answer === answer
-
-      if(correct) setScore(prev => prev + 1)
       
       const answerObject = {
         question: questions[number].question,
@@ -59,50 +72,55 @@ const App: React.FC = () => {
         correct_answer: questions[number].correct_answer
       }
 
-      setUserAnswers((prev) => [...prev, answerObject])
+      checkAnswer(correct, answerObject)
     }
   }
 
-  const nextQuestion = () => {
-    const nextQuestion = number + 1
+  onNextQuestion = () => {
+    const { number, nextQuestion, setGameOver } = this.props
+    
+    const nextQuestionNumber = number + 1
 
-    if(nextQuestion === TOTAL_QUESTIONS) {
+    if(nextQuestionNumber === TOTAL_QUESTIONS) {
       setGameOver(true)
     } else {
-      setNumber(nextQuestion)
+      nextQuestion(nextQuestionNumber)
     }
   }
 
-  return (
-    <>
-      <GlobalStyle />
-      <Wrapper>
-        <h1>REACT QUIZ</h1>
-        { (gameOver || userAnswers.length === TOTAL_QUESTIONS) && (
-          <button className="start" onClick={startTrivia}>
-            Start
-          </button>
-        )}
-        { !gameOver && <p className="score">Score: {score}</p> }
-        { loading && <p>Loading Questions...</p> }
-        { !loading && !gameOver && (
-          <QuestionCard 
-            questionNo={number + 1}
-            totalQuestions={TOTAL_QUESTIONS}
-            question={questions[number].question}
-            answers={questions[number].answers}
-            userAnswer={userAnswers ? userAnswers[number] : undefined }
-            callback={checkAnswer}
-          />
-        )}
-        { !gameOver && !loading && userAnswers.length === number + 1 && number !== TOTAL_QUESTIONS - 1 ? (
-          <button className="next" onClick={nextQuestion}>
-            Next Question
-          </button>
-        ) : null}
-      </Wrapper>
-    </>
-  )
+  render() {
+    const { gameOver, questions, number, score, userAnswers, loading } = this.props
+    return (
+      <>
+        <GlobalStyle />
+        <Wrapper>
+          <h1>REACT QUIZ</h1>
+          { (gameOver || userAnswers.length === TOTAL_QUESTIONS) && (
+            <button className="start" onClick={this.onStartQuiz}>
+              Start
+            </button>
+          )}
+          { !gameOver && <p className="score">Score: {score}</p> }
+          { loading && <p>Loading Questions...</p> }
+          { !loading && !gameOver && (
+            <QuestionCard 
+              questionNo={number + 1}
+              totalQuestions={TOTAL_QUESTIONS}
+              question={questions[number].question}
+              answers={questions[number].answers}
+              userAnswer={userAnswers ? userAnswers[number] : undefined }
+              callback={this.onCheckAnswer}
+            />
+          )}
+          { !gameOver && !loading && userAnswers.length === number + 1 && number !== TOTAL_QUESTIONS - 1 ? (
+            <button className="next" onClick={this.onNextQuestion}>
+              Next Question
+            </button>
+          ) : null}
+        </Wrapper>
+      </>
+    ) 
+  }
 }
 
-export default App;
+export default connector(App);
